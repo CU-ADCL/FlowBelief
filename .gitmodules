@@ -1,0 +1,3 @@
+[submodule "external_repos/mapf_with_edge_bundles"]
+	path = external_repos/mapf_with_edge_bundles
+	url = git@github.com:himanshugupta1009/mapf_with_edge_bundles.git
