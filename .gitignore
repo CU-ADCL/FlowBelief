@@ -1,0 +1,15 @@
+.codex
+.python-version
+
+tree_plot/
+png_exports/
+planners/
+model/
+policies/
+venv/
+__pycache__/
+benchmark_results/
+checkpoints/
+common/__pycache__/
+data/
+path_outputs/

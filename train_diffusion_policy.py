@@ -22,7 +22,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.optimization import get_scheduler
 
 from maze_datasets import MazeDataset
-from common.map_utils import load_forest, create_tree_grid
+#from common.map_utils import load_forest, create_tree_grid
 from rollout_manager import rollout
 
 from local_map_encoder import ConditionalUnet1DWithLocalMap, ConditionalUnet1D

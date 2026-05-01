@@ -336,7 +336,7 @@ def evaluate_all_scenarios(mazes_dir, scenarios_file, cfg_file, total_runs=100, 
                             ctrl_effort_max = -1
                             ctrl_effort_mean = -1
                             ctrl_effort_std = -1
-                        print(f"Avg collision checking calls: {total_cc/(i+1)} for {i+1} iterations")
+                        #print(f"Avg collision checking calls: {total_cc/(i+1)} for {i+1} iterations")
                         # Write results to CSV
                         with open(scenario_output_csv, mode='a', newline='') as file:
                             writer = csv.writer(file)

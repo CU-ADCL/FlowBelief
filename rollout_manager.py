@@ -11,8 +11,12 @@ from common.fm_utils import get_timesteps
 from common.map_utils import create_local_map, is_colliding_parallel
 from policies.fm_policy import DiffusionSampler
 
-from drone_env import DroneEnv
+#from drone_env import DroneEnv
 from car_env import CarEnv
+try:
+    from drone_env import DroneEnv
+except ImportError:
+    DroneEnv = None
 
 from policies.PD_controller import car_pd_controller
 
@@ -56,6 +60,8 @@ def rollout(env_id, policy, ema_noise_pred_net, noise_scheduler,
             obs_dim -= 2
         action_dim = 2
     elif "drone" in env_id.lower():
+        if DroneEnv is None:
+            raise ImportError("drone_env.py is missing from this repo, so drone experiments cannot run.")
         obs_dim = 10
         full_obs_dim = 10
         if not position_conditioned:
