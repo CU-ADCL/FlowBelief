@@ -13,3 +13,6 @@ checkpoints/
 common/__pycache__/
 data/
 path_outputs/
+.venv/
+__pycache__/
+*.pyc
