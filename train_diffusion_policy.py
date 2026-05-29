@@ -27,6 +27,7 @@ from rollout_manager import rollout
 
 from local_map_encoder import ConditionalUnet1DWithLocalMap, ConditionalUnet1D
 from log_to_tensorboard import log_results
+from belief_env import Belief_env
 
 
 def init_noise_pred_net(
@@ -91,6 +92,15 @@ def get_dataset(env_id):
         def get_act(sample):
             return sample['actions']
 
+    elif "belief" in env_id.lower():
+        filename = "datasets/belief_episodes.pkl"
+        with open(filename, "rb") as f:
+            dataset = pickle.load(f)
+        def get_obs(sample):
+            return sample['observations']
+        def get_act(sample):
+            return sample['actions']
+
     else:
         if isinstance(env_id, list):
             dataset = []
@@ -108,7 +118,7 @@ def get_dataset(env_id):
     # if metadata/env_id exists load, otherwise create and save
     metadata_path = f"metadata/{env_id}.pt"
     if os.path.exists(metadata_path):
-        metadata = torch.load(metadata_path)
+        metadata = torch.load(metadata_path, weights_only=False)
 
         # for v_x, v_y using v range
         # metadata['Observations_min'][2] = metadata['Observations_min'][3]
@@ -171,7 +181,7 @@ def train_by_steps(
         output_dir='checkpoints/',
         experiment_name=f"diffusion_planning_{datetime.now().strftime('%d_%m_%H_%M')}",
         env_id="pointmaze-medium-v2",  # ["antmaze-large-diverse-v1", "pointmaze-medium-v2"]
-        rollouts=True,
+        rollouts=False,
         prediction_type='observations',
         obs_history=1,  # number of observations to use per sample
         action_history=1,  # number of past actions to use per sample
@@ -245,6 +255,16 @@ def train_by_steps(
         action_dim = 2
         map_center = (6.0, 4.5)
 
+    elif "belief" in env_id:
+        full_obs_dim = 2
+        obs_dim = full_obs_dim
+
+        if not position_conditioned:
+            obs_dim = 0
+        
+        action_dim = 2
+        map_center = (50.0, 50.0)
+
     else:
         raise ValueError(f"Invalid env_id: {env_id}")
 
@@ -264,6 +284,10 @@ def train_by_steps(
     # if pointmaze or antmaze, use the maze map as global map
     if "pointmaze" in env_id:
         global_map = np.float32(dataset.env_spec.kwargs['maze_map']) if local_map_conditioned else None
+
+    elif "belief" in env_id.lower():
+        env = Belief_env()
+        global_map = env.build_belief_global_map()
 
     else:
         global_map = np.genfromtxt('maps/mazes/D4RL_large.csv', delimiter=',',
@@ -351,23 +375,26 @@ def train_by_steps(
         loss = checkpoint['loss']
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']} with loss {loss}")
 
-    results_per_scenario, frames = rollout(
-        env_id,
-        policy,
-        noise_pred_net,
-        noise_scheduler,
-        max_episode_steps=max_rollout_steps,
-        num_diffusion_iters=num_diffusion_iters,
-        prediction_type=prediction_type,
-        obs_history=obs_history,
-        action_history=action_history,
-        position_conditioned=position_conditioned,
-        goal_conditioned=goal_conditioned,
-        local_map_size=local_map_size,
-        scale=local_map_scale,
-        pred_horizon=pred_horizon,
-        action_horizon=action_horizon,
-    )
+    frames = None
+    results_per_scenario = None
+    if rollouts:
+        results_per_scenario, frames = rollout(
+            env_id,
+            policy,
+            noise_pred_net,
+            noise_scheduler,
+            max_episode_steps=max_rollout_steps,
+            num_diffusion_iters=num_diffusion_iters,
+            prediction_type=prediction_type,
+            obs_history=obs_history,
+            action_history=action_history,
+            position_conditioned=position_conditioned,
+            goal_conditioned=goal_conditioned,
+            local_map_size=local_map_size,
+            scale=local_map_scale,
+            pred_horizon=pred_horizon,
+            action_horizon=action_horizon,
+        )
     if frames:
         clip = ImageSequenceClip(frames, fps=10)
         os.makedirs("video", exist_ok=True)
@@ -375,8 +402,9 @@ def train_by_steps(
 
     if not debug:
         writer = SummaryWriter(log_dir=f"runs/{experiment_name}")
-        log_results(writer, results_per_scenario, start_epoch - 1,
-                    experiment_name, env_id,s_global)
+        if results_per_scenario is not None:
+            log_results(writer, results_per_scenario, start_epoch - 1,
+                        experiment_name, env_id,s_global)
     else:
         writer = None
 

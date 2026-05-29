@@ -1,29 +1,14 @@
-import csv
 from datetime import datetime
-import random
 
 import yaml
 
 from train_diffusion_policy import train_by_steps
-from rollout_manager import rollout
-from train_dipper import train_dipper, rollout_dipper
-
-import matplotlib.pyplot as plt
-import minari
-import numpy as np
-import torch
-from omegaconf import DictConfig
-from omegaconf import OmegaConf
-
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-
-from run_scenarios import evaluate_all_scenarios
 
 
 
 if __name__ == "__main__":
 
-    env_id = "carmaze"  # "carmaze" / "antmaze"
+    env_id = "beliefmaze"  # "carmaze" / "antmaze"
     unet_dims = {
         'small': [64, 128, 256],
         'medium': [256, 512, 1024],
@@ -35,7 +20,7 @@ if __name__ == "__main__":
         loaded_config = yaml.safe_load(file)
 
     timestamp = datetime.now().strftime('%d_%m_%H_%M')
-    experiment_name = f"carmaze_{timestamp}"  # _{timestamp}
+    experiment_name = f"beliefmaze_{timestamp}"  # _{timestamp}
 
     train_by_steps(
         # checkpoint="xxxx.pt",
@@ -44,6 +29,7 @@ if __name__ == "__main__":
         prediction_type=loaded_config.get('prediction_type', "actions"),    #  ["actions","observations"]
         obs_history=loaded_config.get('obs_history', 1),
         action_history=loaded_config.get('action_history', 1),
+        position_conditioned=loaded_config.get('position_conditioned', True),
         goal_conditioned=loaded_config.get('goal_conditioned', True),
         local_map_conditioned=loaded_config.get('local_map_conditioned', True),
         local_map_size=loaded_config.get('local_map_size', 20),
@@ -57,8 +43,7 @@ if __name__ == "__main__":
         augmentations=loaded_config.get('augmentations', ["mirror"]),   # ["rotate", "mirror"]
         policy=loaded_config.get('policy', "flow_matching"),    # ["diffusion","flow_matching"]
         num_diffusion_iters=loaded_config.get('num_diffusion_iters', 5),
-        unet_down_dims=unet_dims[loaded_config.get('unet_down_dims', 'large')],
+        unet_down_dims=unet_dims[loaded_config.get('unet_size', 'large')],
         pred_horizon=loaded_config.get('pred_horizon', 64),
         action_horizon=loaded_config.get('action_horizon', 8),
     )
-

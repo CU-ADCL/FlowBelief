@@ -49,7 +49,7 @@ class DiffusionSampler(nn.Module):
 
         self.noise_pred_net = noise_pred_net
         self.noise_scheduler = noise_scheduler
-
+#Analyze ts
     def forward(self, obs_seq, prev_actions, goal=None, local_map=None):
         """
             obs_seq (ndarray) : (B, obs_history, obs_dim)

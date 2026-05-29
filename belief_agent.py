@@ -12,9 +12,7 @@ class Belief_agent():
         covariance_init = np.eye(self.state_length)
 
         self.env = env
-        self.state = [self.env.env_start,covariance_init.flatten()]
-        self.input = np.zeros((self.action_length))
-
+    
         self.A = np.eye(self.state_length)
         self.B = np.eye(self.action_length)
         self.C = np.eye(self.measurement_size) #assuming measurementsize=statesize
@@ -26,17 +24,25 @@ class Belief_agent():
         self.u_max = 5
         self.u_min = -5
 
-    def step_state(self):
-        pos_next = self.A @ self.state[0] + self.B @ self.input
-        cov_next = self.step_covariance(pos_next)
+    def step_state(self, state, action):
+        pos = state[:self.state_length]
+        cov = state[self.state_length:]
+
+        if len(cov) == 0: #if only doing state-space planning
+            cov = np.zeros((self.state_length**2))
+
+        pos_next = self.A @ pos + self.B @ action
+        cov_next = self.step_covariance(pos_next,cov)
 
         pos_next = self.env.clip_pos(pos_next)
 
-        return [pos_next,cov_next]
+        new_state = np.append(pos_next, cov_next)
+
+        return new_state
 
 
-    def step_covariance(self,pos_next):
-        covmat = self.state[1].reshape(self.state_length, self.state_length)
+    def step_covariance(self, pos_next, cov):
+        covmat = cov.reshape(self.state_length, self.state_length)
 
         p_minus = (self.A @ covmat @ self.A.T) + self.Q
 
@@ -47,41 +53,37 @@ class Belief_agent():
         
         return p_plus.flatten()
 
-    def step_mult(self,steps):
+    def step_mult(self, steps, state, actions):
         path = np.zeros((steps,self.state_length + (self.state_length**2)))
+        flag = 0
+
+        if len(actions) == 1: #Means this is for RRT training data, NOT model version
+            flag = 1    #if there is only 1 action, and then therefore usually more steps then actions
 
         for i in range(steps):
-            pos,cov = self.step_state()
-            self.state = [pos,cov]
-            x,y = pos
-            path[i,0] = x 
-            path[i,1] = y
-            path[i,2:6] = cov
+            if not flag:
+                state_next = self.step_state(state, actions[i,:])
+            else: 
+                state_next = self.step_state(state, actions[0,:])
         
-        return [pos, cov], path
+            path[i,:] = state_next
+            state=state_next
+        
+        return path[-1,:], path
 
     
     #wrapper functions for state-space RRT code
-    def get_random_action(self,rng):
+    def get_random_action(self, rng):
         return rng.uniform(self.u_min, self.u_max, size=self.action_length)
 
 
-    def get_next_state(self,state,action,dt,num_steps):
+    def get_next_state(self, state, actions, dt, num_steps):
 
-        og_state = self.state
-        og_input = self.input
+        new_state, path = self.step_mult(num_steps, state, actions)
 
-        self.state = [state.copy(), og_state[1].copy()] #for belief space, need to step with a passed in covariance too
-        self.input = action.copy()
-
-        new_state,path = self.step_mult(num_steps)
-        new_state = new_state[0]            #only want position
-        new_path = path[:,:2]
-
-        self.state = og_state
-        self.input = og_input
+        #only extract position
+        new_state = new_state[:self.state_length]
+        new_path = path[:,:self.state_length]
 
         return new_state, new_path
-
-
 

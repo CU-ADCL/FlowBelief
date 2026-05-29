@@ -29,7 +29,20 @@ class Belief_env():
         self.static_circular_obstacles = np.empty((0, 3), dtype=np.float64)
         self.static_rectangular_obstacles = np.array(self.obstacle_region, dtype=np.float64)
 
+    def build_belief_global_map(self, s_global=1.0):
+        width = int((self.x_bounds[1] - self.x_bounds[0]) / s_global)
+        height = int((self.y_bounds[1] - self.y_bounds[0]) / s_global)
 
+        global_map = np.zeros((height, width), dtype=np.float32)
+
+        for x1, x2, y1, y2 in self.obstacle_region:
+            col1 = int(x1 / s_global)
+            col2 = int(x2 / s_global)
+            row1 = height - int(y2 / s_global)
+            row2 = height - int(y1 / s_global)
+            global_map[row1:row2, col1:col2] = 1.0
+
+        return global_map
 
     def cond_measurement_region(self,pos):
         x,y = pos
@@ -66,16 +79,16 @@ class Belief_env():
              and self.obstacle_region[i][2]<=y<= self.obstacle_region[i][3]):
                 return True
 
-        if xmin<=x<xmax and ymin<=y<ymax:
+        if xmin<x<xmax and ymin<y<ymax:
             return False
         else: 
             return True
 
     def path_safe(self, path):
-        for pos in path:
+        for i, pos in enumerate(path):
             if self.check_collision(pos):
-                return False
-        return True
+                return i, False
+        return len(path), True
 
     #might want to add covariance clipping if that exists
     def clip_pos(self,pos):

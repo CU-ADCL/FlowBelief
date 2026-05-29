@@ -345,6 +345,8 @@ class MazeDataset(Dataset):
         goal = episode['goal']
         if "ant" in self.env_id.lower() or "point" in self.env_id.lower():
             goal = goal[t]
+        elif "belief" in self.env_id.lower():
+            pass
         else:
             x = (goal[1] + 0.5) * self.s_global - self.map_center[0]
             y = self.map_center[1] - (goal[0] + 0.5) * self.s_global
@@ -366,7 +368,7 @@ class MazeDataset(Dataset):
             # create local raster map\occupancy grid
             if "ant" in self.env_id.lower():
                 x,y = episode['position'][t]
-            else:
+            else: #belief runs through this else
                 x, y = obs_seq[self.obs_history - 1, 0].item(), obs_seq[self.obs_history - 1, 1].item()
 
             if "car" in self.env_id.lower():
