@@ -1,11 +1,18 @@
 import math
 import numpy as np
+from pathlib import Path
+import sys
+
+RRT_SRC = Path(__file__).resolve().parent / "external_repos" / "mapf_with_edge_bundles" / "src"
+if str(RRT_SRC) not in sys.path:
+    sys.path.append(str(RRT_SRC))
+
+from Environments import RectangleObstacle2D
 
 class Belief_env():
 
 #set up environment parameters
     def __init__(self):
-
         self.measurement_size = 2  #need to change across gym and agent files
 
         self.x_bounds = (0, 100)
@@ -28,6 +35,16 @@ class Belief_env():
 
         self.static_circular_obstacles = np.empty((0, 3), dtype=np.float64)
         self.static_rectangular_obstacles = np.array(self.obstacle_region, dtype=np.float64)
+
+        self.obstacles = [
+            RectangleObstacle2D(
+                x=(x1 + x2) / 2.0,
+                y=(y1 + y2) / 2.0,
+                w=(x2 - x1),
+                h=(y2 - y1),
+            )
+            for (x1, x2, y1, y2) in self.obstacle_region
+        ]
 
     def build_belief_global_map(self, s_global=1.0):
         width = int((self.x_bounds[1] - self.x_bounds[0]) / s_global)

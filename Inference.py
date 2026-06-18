@@ -20,6 +20,7 @@ RRT_SRC = Path(__file__).resolve().parent / "external_repos" / "mapf_with_edge_b
 if str(RRT_SRC) not in sys.path:
     sys.path.append(str(RRT_SRC))
 
+from printer import RRTPrinter
 from rrt import RRT
 
 class unique_inference(RRT):
@@ -60,7 +61,10 @@ class unique_inference(RRT):
         self.api = Belief_wrapper(self.env, self.agent)
 
         self.global_map = self.env.build_belief_global_map()
-        self.map_center = self.env.y_bounds
+        self.map_center = (
+            (self.env.x_bounds[1] - self.env.x_bounds[0]) / 2.0,
+            (self.env.y_bounds[1] - self.env.y_bounds[0]) / 2.0,
+        )
 
         super().__init__(
             start=self.env.env_start,
@@ -77,7 +81,7 @@ class unique_inference(RRT):
             cost_function=self.api.cost_function,
             random_point_function=self.api.random_point_function,
             reached_goal_function=self.api.reached_goal_function,
-            udf_seed=loaded_config.get("seed", 42),
+            udf_seed=loaded_config.get("seed", 41),
             debug_flag=False,
             print_logs=False,
         )
@@ -131,7 +135,7 @@ class unique_inference(RRT):
             prediction_type="epsilon",
         )
 
-        checkpoint = loaded_config.get("checkpoint",  "beliefmaze_29_05_HH_MM_epoch_5_step_XXXX.pt")
+        checkpoint = loaded_config.get("checkpoint",  "beliefmaze_28_05_23_52_epoch_4_step_2000.pt")
         checkpoint_path = Path(checkpoint)
         if not checkpoint_path.is_absolute():
             checkpoint_path = Path(__file__).resolve().parent / "checkpoints" / checkpoint_path
@@ -169,9 +173,10 @@ class unique_inference(RRT):
         x,y = parent_node.state[:2]
         local_map = create_local_map(self.global_map,x,y,theta=0.0,map_size=self.local_map_size,scale=self.local_map_scale,s_global=1.0,map_center = self.map_center)
 
-        actions = self.model(obs_seq,action_seq,self.env.goal,local_map) #how do I add local map?
+        actions = self.model(obs_seq,action_seq,self.env.goal,local_map)
 
         mpc_actions = actions[0,:self.action_horizon,:]
+
 
         new_state, path_to_new_state = self.agent.get_next_state(
                 parent_node.state,
@@ -180,6 +185,7 @@ class unique_inference(RRT):
                 self.action_horizon
         )
 
+        
         accept_new_node = self.isvalid(
             path_to_new_state,
             self.agent.radius,
@@ -196,11 +202,13 @@ class unique_inference(RRT):
 
         if not accept_new_node:
             return None
-    
+
+        last_action = mpc_actions[-1,:] #temporary
+
         best_candidate = (
             new_state,
             path_to_new_state,
-            mpc_actions,
+            last_action,
             random_time
         )
 
@@ -270,9 +278,22 @@ class unique_inference(RRT):
 
 
             
+def main():
+    name = "beliefmaze"
+    infra = unique_inference(name)
 
-        
+    infra.run_action()
 
+    ids, states, controls, timesteps = infra.get_path()
+
+    output_dir = Path(__file__).resolve().parent / "media"
+    output_dir.mkdir(exist_ok=True)
+    v = RRTPrinter(infra.env, infra, ids)
+    v.print_rrt(str(output_dir / "Pranith_flow_path.png"))
+
+
+if __name__ == "__main__":
+    main()
 
 
 

@@ -1,0 +1,25 @@
+env_id: "beliefmaze"
+debug: false
+prediction_type: "actions"
+position_conditioned: true
+goal_conditioned: true
+obs_history: 2
+action_history: 1
+local_map_conditioned: true
+local_map_size: 50
+local_map_scale: 1
+local_map_embedding_dim: 400
+local_map_encoder: "resnet"
+denoiser: "unet"
+unet_size: "medium"
+num_epochs: 8
+checkpoint_every: 100
+resume_checkpoint: null
+augmentations: [ "mirror" ]
+policy: "flow_matching"
+num_diffusion_iters: 1
+pred_horizon: 4
+action_horizon: 2
+goal_conditioning_bias: 1
+model_predictive_control: true
+checkpoint: "beliefmaze_17_06_08_07_epoch_8_step_15400.pt"

@@ -23,7 +23,7 @@ if __name__ == "__main__":
     experiment_name = f"beliefmaze_{timestamp}"  # _{timestamp}
 
     train_by_steps(
-        # checkpoint="xxxx.pt",
+        checkpoint=loaded_config.get('resume_checkpoint', None),
         experiment_name=experiment_name,
         debug=loaded_config.get('debug', False),
         prediction_type=loaded_config.get('prediction_type', "actions"),    #  ["actions","observations"]
@@ -36,8 +36,8 @@ if __name__ == "__main__":
         local_map_scale=loaded_config.get('local_map_scale', 0.2),
         local_map_embedding_dim=loaded_config.get('local_map_embedding_dim', 400),
         local_map_encoder=loaded_config.get('local_map_encoder', "resnet"), #["grid", "max", "identity", "mlp","resnet"]
-        num_epochs=loaded_config.get('num_epochs', 15),
-        checkpoint_every=1000,
+        num_epochs=loaded_config.get('num_epochs', 10),
+        checkpoint_every=loaded_config.get('checkpoint_every', 1000),
         rollout_every=1000,
         env_id=loaded_config.get('env_id', "carmaze"),
         augmentations=loaded_config.get('augmentations', ["mirror"]),   # ["rotate", "mirror"]

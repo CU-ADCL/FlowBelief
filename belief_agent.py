@@ -57,7 +57,7 @@ class Belief_agent():
         path = np.zeros((steps,self.state_length + (self.state_length**2)))
         flag = 0
 
-        if len(actions) == 1: #Means this is for RRT training data, NOT model version
+        if len(actions) == 1: #Means this is for RRT training data, NOT model inference
             flag = 1    #if there is only 1 action, and then therefore usually more steps then actions
 
         for i in range(steps):
@@ -74,7 +74,7 @@ class Belief_agent():
     
     #wrapper functions for state-space RRT code
     def get_random_action(self, rng):
-        return rng.uniform(self.u_min, self.u_max, size=self.action_length)
+        return rng.uniform(self.u_min, self.u_max, size=(1,self.action_length))
 
 
     def get_next_state(self, state, actions, dt, num_steps):

@@ -136,6 +136,7 @@ def get_dataset(env_id):
 
         # Iterate through each episode in the dataset
         total_steps = 0
+        total_actions = 0
         for episode in tqdm(dataset):
             Observations_sum += np.sum(get_obs(episode), axis=0)
             Observations_sum_sq += np.sum(get_obs(episode) ** 2, axis=0)
@@ -146,12 +147,13 @@ def get_dataset(env_id):
             actions_min = np.minimum(actions_min, np.min(get_act(episode), axis=0))
             actions_max = np.maximum(actions_max, np.max(get_act(episode), axis=0))
             total_steps += len(get_obs(episode))
+            total_actions += len(get_act(episode))
 
         # Calculate mean and standard deviation
         observations_mean = Observations_sum / total_steps
         observations_std = np.sqrt(Observations_sum_sq / total_steps - observations_mean ** 2)
-        actions_mean = Actions_sum / total_steps
-        actions_std = np.sqrt(Actions_sum_sq / total_steps - actions_mean ** 2)
+        actions_mean = Actions_sum / total_actions
+        actions_std = np.sqrt(Actions_sum_sq / total_actions - actions_mean ** 2)
 
         # Pack into a dictionary
         metadata = {
@@ -196,7 +198,7 @@ def train_by_steps(
         augmentations=None,
 
         # Training settings
-        num_epochs=100,
+        num_epochs=10,
         batch_size=128, #256,
         num_workers=3,
         checkpoint_every=10,
@@ -366,14 +368,39 @@ def train_by_steps(
     )
 
     start_epoch = 1
+    start_step = 0
     if checkpoint is not None:
+        checkpoint_name = checkpoint
         checkpoint = torch.load(output_dir + checkpoint)
         noise_pred_net.load_state_dict(checkpoint['noise_pred_net_state_dict'])
         ema.load_state_dict(checkpoint['ema_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
+        start_step = checkpoint.get('step', 0)
+        if start_step == 0 and '_step_' in checkpoint_name:
+            step_text = checkpoint_name.rsplit('_step_', 1)[1]
+            step_digits = ""
+            for char in step_text:
+                if not char.isdigit():
+                    break
+                step_digits += char
+            if step_digits:
+                start_step = int(step_digits)
         loss = checkpoint['loss']
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']} with loss {loss}")
+
+    def save_checkpoint(epoch, step, loss, suffix=""):
+        checkpoint_state = {
+            'epoch': epoch,
+            'step': step,
+            'noise_pred_net_state_dict': ema_noise_pred_net.state_dict(),
+            'ema_state_dict': ema.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss
+        }
+        path = f"{output_dir}/{experiment_name}_epoch_{epoch}_step_{step}{suffix}.pt"
+        torch.save(checkpoint_state, path)
+        return path
 
     frames = None
     results_per_scenario = None
@@ -408,8 +435,11 @@ def train_by_steps(
     else:
         writer = None
 
-    step = 0
+    step = start_step
+    last_loss = None
+    final_epoch = start_epoch - 1
     for epoch in range(start_epoch, num_epochs + 1):  # [1,num_epochs]
+        final_epoch = epoch
         epoch_loss = list()
         with tqdm(train_dataloader, desc=f'Epoch {epoch}') as tepoch:
             for nobs, naction, goal, local_map in tepoch:
@@ -489,19 +519,13 @@ def train_by_steps(
 
                 # logging
                 loss_cpu = loss.item()
+                last_loss = loss
                 epoch_loss.append(loss_cpu)
                 tepoch.set_postfix(loss=loss_cpu)
 
                 # save model
                 if step % checkpoint_every == 0 and step > 0:
-                    checkpoint = {
-                        'epoch': epoch,
-                        'noise_pred_net_state_dict': ema_noise_pred_net.state_dict(),
-                        'ema_state_dict': ema.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'loss': loss
-                    }
-                    torch.save(checkpoint, f"{output_dir}/{experiment_name}_epoch_{epoch}_step_{step}.pt")
+                    save_checkpoint(epoch, step, loss)
 
                 # rollout test
                 if rollouts and ((step % rollout_every == 0 and step > 0) or debug):
@@ -544,6 +568,10 @@ def train_by_steps(
     # is used for inference
     ema_noise_pred_net = noise_pred_net
     ema.copy_to(ema_noise_pred_net.parameters())
+
+    if step > 0 and last_loss is not None and step % checkpoint_every != 0:
+        final_checkpoint_path = save_checkpoint(final_epoch, step, last_loss, suffix="_final")
+        print(f"Saved final checkpoint: {final_checkpoint_path}")
 
     print("Done")
 

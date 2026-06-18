@@ -13,7 +13,6 @@ RRT_SRC = Path(__file__).resolve().parent / "external_repos" / "mapf_with_edge_b
 if str(RRT_SRC) not in sys.path:
     sys.path.append(str(RRT_SRC))
 
-from Environments import RectangleObstacle2D
 from rrt import RRT
 from printer import RRTPrinter
 
@@ -60,20 +59,10 @@ if __name__ == "__main__":
     agent = Belief_agent(env)
     api = Belief_wrapper(env, agent)
 
-    env.obstacles = [
-        RectangleObstacle2D(
-            x=(x1 + x2) / 2.0,
-            y=(y1 + y2) / 2.0,
-            w=(x2 - x1),
-            h=(y2 - y1),
-        )
-        for (x1, x2, y1, y2) in env.obstacle_region
-    ]
-
-    numpath = 5000
+    numpath = 10000
     total_runs = 0
     dataset = []
-    seed_start = 5
+    seed_start = 10
     output_dir = Path("media")
     output_dir.mkdir(exist_ok=True)
     dataset_dir = Path("datasets")
@@ -110,7 +99,7 @@ if __name__ == "__main__":
         ids, states, controls, timesteps = rrt.get_path()
 
         if rrt.path_found:
-            observations = np.asarray(states[:-1], dtype=np.float32)
+            observations = np.asarray(states, dtype=np.float32)
             actions = np.asarray(controls, dtype=np.float32)
 
             if len(observations) >= 2 and len(actions) >= 1:
