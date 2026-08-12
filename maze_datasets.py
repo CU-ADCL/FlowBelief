@@ -5,8 +5,6 @@ import torch
 from torch.utils.data import Dataset
 import bisect
 
-from common.map_utils import is_colliding_parallel
-from common.se3_utils import q_to_rot6d_th
 from common.map_utils import create_local_map
 
 class MazeDataset(Dataset):
@@ -58,34 +56,8 @@ class MazeDataset(Dataset):
         filtered_dataset = []
         for episode in dataset:
 
-            if 'point' in env_id.lower():
-                if len(episode.observations['observation']) > self.obs_history + self.pred_horizon:
-                    filtered_dataset.append(                        {
-                            'observations': episode.observations['observation'],
-                            'actions': episode.actions,
-                            'goal': episode.observations['desired_goal'],
-                            'position': episode.observations['achieved_goal']
-                        })
-
-            elif 'ant' in env_id.lower():
-                done = np.linalg.norm(episode.observations['achieved_goal'] - episode.observations['desired_goal'],
-                                          axis=-1) < 0.5
-                collision = is_colliding_parallel(episode.observations['achieved_goal'], global_map,
-                                                      maze_size_scaling=4, ball_radius=1)
-                first_invalid = np.logical_or(done, collision).argmax()
-                if first_invalid > self.obs_history + self.pred_horizon:
-                    filtered_dataset.append(
-                        {
-                            'observations': episode.observations['observation'][:first_invalid],
-                            'actions': episode.actions[:first_invalid],
-                            'goal': episode.observations['desired_goal'][:first_invalid],
-                            'position': episode.observations['achieved_goal'][:first_invalid]
-                        }
-                    )
-
-            else:
-                if len(episode['observations']) / self.subs_rate > self.obs_history + self.pred_horizon:
-                    filtered_dataset.append(episode)
+            if len(episode['observations']) / self.subs_rate > self.obs_history + self.pred_horizon:
+                filtered_dataset.append(episode)
         dataset = filtered_dataset
         self.dataset = dataset
 
@@ -132,15 +104,7 @@ class MazeDataset(Dataset):
             obs_seq (np.ndarray): Normalized observation sequence.
             act_seq (np.ndarray): Normalized action sequence.
         """
-        if "car" in self.env_id.lower():
-            obs_seq[:, :, 2] = (obs_seq[:, :, 2] + np.pi) % (2 * np.pi) - np.pi  # normalize angle to [-pi, pi]
-        elif "drone" in self.env_id.lower():
-            obs_seq[..., :10] = (obs_seq[..., :10] - self.Observations_mean) / self.Observations_std
-        elif "ant" in self.env_id.lower():
-            obs_seq[...,0] = (obs_seq[...,0] - self.Observations_mean[0]) / self.Observations_std[0]
-            obs_seq[...,7:] = (obs_seq[...,7:] - self.Observations_mean[...,5:]) / self.Observations_std[...,5:]
-        else:
-            obs_seq = (obs_seq - self.Observations_mean) / self.Observations_std
+        obs_seq = (obs_seq - self.Observations_mean) / self.Observations_std
         # obs_seq = (obs_seq - self.Observations_min) / (self.Observations_max - self.Observations_min)
         # obs_seq = obs_seq * 2 - 1
 
@@ -240,50 +204,18 @@ class MazeDataset(Dataset):
             Augmented obs_seq, act_seq, goal, and local_map.
         """
 
-        if "car" in self.env_id.lower():
-            for aug in self.augmentations:
-                # if aug == 'rotate':
-                #     angle = random.choice([0, 90, 180, 270])
-                #     if angle != 0:
-                #         local_map = torch.rot90(local_map, k=angle // 90)
-                #         cos_angle = np.cos(np.radians(angle))
-                #         sin_angle = np.sin(np.radians(angle))
-                #         rotation_matrix = torch.tensor([[cos_angle, -sin_angle], [sin_angle, cos_angle]],
-                #                                        dtype=torch.float32)
-                #         goal = torch.matmul(rotation_matrix, goal)
-                #         obs_seq[:, :2] = torch.matmul(obs_seq, rotation_matrix)
-                #         act_seq[:, :2] = torch.matmul(act_seq[:, :2], rotation_matrix)
-                if aug == 'mirror':
-                    if random.random() > 0.5:
-                            local_map = torch.flip(local_map, [0])
-                            goal[1] = -goal[1]
-                            obs_seq[:, 2] = -obs_seq[:, 2]  # heading (yaw) [rad]
-                            obs_seq[:, 5] = -obs_seq[:, 5]  # steering angle [rad]
-                            act_seq[:, 1] = -act_seq[:, 1]  # time derivative of the steering angle [rad]
-        if "point" in self.env_id.lower():
-            for aug in self.augmentations:
-                if aug == 'rotate':
-                    angle = random.choice([0, 90, 180, 270])
-                    if angle != 0:
-                        local_map = torch.rot90(local_map, k=angle // 90)
-                        cos_angle = np.cos(np.radians(angle))
-                        sin_angle = np.sin(np.radians(angle))
-                        rotation_matrix = torch.tensor([[cos_angle, -sin_angle], [sin_angle, cos_angle]],
-                                                       dtype=torch.float32)
-                        goal = torch.matmul(rotation_matrix, goal)
-                        obs_seq[:, :2] = torch.matmul(obs_seq, rotation_matrix)
-                        act_seq[:, :2] = torch.matmul(act_seq[:, :2], rotation_matrix)
-                elif aug == 'mirror':
-                    if random.random() > 0.5:
-                        local_map = torch.flip(local_map, [1])
-                        goal[0] = -goal[0]
-                        obs_seq[:, 0] = -obs_seq[:, 0]
-                        act_seq[:, 0] = -act_seq[:, 0]
-                    if random.random() > 0.5:
-                        local_map = torch.flip(local_map, [0])
-                        goal[1] = -goal[1]
-                        obs_seq[:, 1] = -obs_seq[:, 1]
-                        act_seq[:, 1] = -act_seq[:, 1]
+        for aug in self.augmentations:
+            if aug == 'mirror':
+                if random.random() > 0.5:
+                    local_map = torch.flip(local_map, [1])
+                    goal[0] = -goal[0]
+                    obs_seq[:, 0] = -obs_seq[:, 0]
+                    act_seq[:, 0] = -act_seq[:, 0]
+                if random.random() > 0.5:
+                    local_map = torch.flip(local_map, [0])
+                    goal[1] = -goal[1]
+                    obs_seq[:, 1] = -obs_seq[:, 1]
+                    act_seq[:, 1] = -act_seq[:, 1]
 
         return obs_seq, act_seq, goal, local_map
 
@@ -343,14 +275,6 @@ class MazeDataset(Dataset):
         #     act_seq = np.vstack([[self.Actions_mean] * (self.action_history - t), episode['actions'][:t + self.pred_horizon]])
 
         goal = episode['goal']
-        if "ant" in self.env_id.lower() or "point" in self.env_id.lower():
-            goal = goal[t]
-        elif "belief" in self.env_id.lower():
-            pass
-        else:
-            x = (goal[1] + 0.5) * self.s_global - self.map_center[0]
-            y = self.map_center[1] - (goal[0] + 0.5) * self.s_global
-            goal = np.array([x, y])
 
         # Convert to PyTorch tensors
         obs_seq = torch.tensor(obs_seq, dtype=torch.float32)
@@ -366,62 +290,19 @@ class MazeDataset(Dataset):
         local_map = []
         if self.global_map is not None:
             # create local raster map\occupancy grid
-            if "ant" in self.env_id.lower():
-                x,y = episode['position'][t]
-            else: #belief runs through this else
-                x, y = obs_seq[self.obs_history - 1, 0].item(), obs_seq[self.obs_history - 1, 1].item()
-
-            if "car" in self.env_id.lower():
-                yaw = obs_seq[self.obs_history - 1, 2].item()
-            else:
-                yaw = 0
+            x, y = obs_seq[self.obs_history - 1, 0].item(), obs_seq[self.obs_history - 1, 1].item()
+            yaw = 0
             local_map = create_local_map(self.global_map, x, y, yaw, self.local_map_size,
                                          self.scale, self.s_global, self.map_center)
             local_map = torch.tensor(local_map, dtype=torch.float32).squeeze(0)
             # scale to [-1, 1]
             local_map = local_map * 2 - 1
 
-        if "car" in self.env_id.lower():
-            # rotate to car frame
-            cos_angle = np.cos(yaw)
-            sin_angle = np.sin(yaw)
-            rotation_matrix = torch.tensor([  # rotates by -yaw
-                [cos_angle, sin_angle],
-                [-sin_angle, cos_angle]
-            ], dtype=torch.float32)
-            goal = goal - obs_seq[self.obs_history - 1, :2]  # goal relative to the current position
-            goal = torch.matmul(rotation_matrix, goal)
-            goal = np.tanh(goal / self.local_map_size)  # scale goal to [-1, 1]
-
-            # obs_seq = obs_seq[:, 3:]    # remove x, y, theta for car
-            # future observations are relative to current state
-            obs_seq[self.obs_history:] = obs_seq[self.obs_history:] - obs_seq[self.obs_history - 1]
-            obs_seq[self.obs_history:, :2] = torch.matmul(rotation_matrix,
-                                                          obs_seq[self.obs_history:, :2].t()).t()  # rotate to car frame
-            obs_seq[:, 2] = torch.arctan2(torch.sin(obs_seq[:, 2]),
-                                          torch.cos(obs_seq[:, 2]))  # normalize angle to [-pi, pi]
-            obs_seq[self.obs_history:] /= self.metadata['Observations_std']  # normalize
-        else:
-            # goal relative to the current position
-            if "ant" in self.env_id.lower():
-                goal = goal - episode['position'][t]
-            else:
-                goal = goal - obs_seq[self.obs_history - 1, :2]
-            goal = np.tanh(goal / self.local_map_size)  # scale goal to [-1, 1]
+        goal = goal - obs_seq[self.obs_history - 1, :2]
+        goal = np.tanh(goal / self.local_map_size)  # scale goal to [-1, 1]
 
         # Apply augmentations
         if self.augmentations is not None:
             obs_seq, act_seq, goal, local_map = self.apply_augmentations(obs_seq, act_seq, goal, local_map)
-
-        # use 6D rotation representation
-        if "drone" in self.env_id.lower():
-            pos = obs_seq[..., :6]
-            q = obs_seq[..., 6:10]
-            rot = q_to_rot6d_th(q)
-            obs_seq = torch.cat([pos, rot], dim=-1)
-        if "ant" in self.env_id.lower():
-            q = obs_seq[..., 1:5]
-            rot = q_to_rot6d_th(q)
-            obs_seq = np.concatenate([obs_seq[..., :1], rot, obs_seq[..., 5:]], axis=-1)
 
         return obs_seq, act_seq, goal, local_map

@@ -4,14 +4,14 @@ import sys
 import numpy as np
 import torch
 import yaml
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
 from belief_agent import Belief_agent
 from belief_API import Belief_wrapper
 from belief_env import Belief_env
-from local_map_encoder import ConditionalUnet1DWithLocalMap, ConditionalUnet1D
-from policies.fm_policy import DiffusionSampler
+from Neural_Network.local_map_encoder import ConditionalUnet1DWithLocalMap, ConditionalUnet1D
 from common.map_utils import create_local_map
+from Model.diffusion import Diffusion
+from Model.flowmatching import FlowMatching
 
 
 
@@ -56,9 +56,19 @@ class unique_inference(RRT):
 
         self.diffusion_iters = loaded_config.get("num_diffusion_iters", 1)
 
+        self.goal_conditioning_bias = loaded_config.get("goal_conditioning_bias", 0)
+
+
         self.env = Belief_env()
         self.agent = Belief_agent(self.env)
         self.api = Belief_wrapper(self.env, self.agent)
+        self.seed = loaded_config.get("seed", 5)
+        goal = loaded_config.get("goal")
+        if goal is None:
+            goal = self.env.generate_random_goal(np.random.default_rng(self.seed))
+        else:
+            self.env.goal = np.asarray(goal, dtype=np.float64)
+        self.goal = self.env.goal
 
         self.global_map = self.env.build_belief_global_map()
         self.map_center = (
@@ -68,7 +78,7 @@ class unique_inference(RRT):
 
         super().__init__(
             start=self.env.env_start,
-            goal=self.env.goal,
+            goal=self.goal,
             goal_radius=self.env.goal_radius,
             env=self.env,
             agent=self.agent,
@@ -81,7 +91,7 @@ class unique_inference(RRT):
             cost_function=self.api.cost_function,
             random_point_function=self.api.random_point_function,
             reached_goal_function=self.api.reached_goal_function,
-            udf_seed=loaded_config.get("seed", 41),
+            udf_seed=self.seed,
             debug_flag=False,
             print_logs=False,
         )
@@ -89,18 +99,19 @@ class unique_inference(RRT):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
 
-        unet_dims = {
-            "small": [64, 128, 256],
-            "medium": [256, 512, 1024],
-            "large": [512, 1024, 2048],
-            "xlarge": [1024, 2048, 4096],
+        unet_base_channels = {
+            "small": 64,
+            "medium": 256,
+            "large": 512,
+            "xlarge": 1024,
         }
 
         unet_size = loaded_config.get("unet_size", "large")
+        unet_down_dims = loaded_config.get("unet_down_dims", [1, 2, 4])
 
         obs_dim = self.agent.state_length
         action_dim = self.agent.action_length
-        input_dim = action_dim if self.prediction_type == "actions" else obs_dim
+        input_channels = action_dim if self.prediction_type == "actions" else obs_dim
         global_cond_dim = (
             obs_dim * self.obs_history
             + 2 * self.goal_conditioned
@@ -114,45 +125,77 @@ class unique_inference(RRT):
                 else self.local_map_embedding_dim
             )
             noise_pred_net = ConditionalUnet1DWithLocalMap(
-                input_dim=input_dim,
+                input_channels=input_channels,
+                output_channels=input_channels,
                 encoder_name=self.local_map_encoder,
                 embedding_dim=embedding_dim,
                 additional_global_cond_dim=global_cond_dim,
                 local_map_size=self.local_map_size,
-                down_dims=unet_dims[unet_size],
+                base_channels=unet_base_channels[unet_size],
+                down_dims=unet_down_dims,
             )
         else:
             noise_pred_net = ConditionalUnet1D(
-                input_dim=input_dim,
+                input_channels=input_channels,
+                output_channels=input_channels,
                 global_cond_dim=global_cond_dim,
-                down_dims=unet_dims[unet_size],
+                base_channels=unet_base_channels[unet_size],
+                down_dims=unet_down_dims,
             )
-
-        noise_scheduler = DDPMScheduler(
-            num_train_timesteps=self.diffusion_iters,
-            beta_schedule="squaredcos_cap_v2",
-            clip_sample=True,
-            prediction_type="epsilon",
-        )
 
         checkpoint = loaded_config.get("checkpoint",  "beliefmaze_28_05_23_52_epoch_4_step_2000.pt")
         checkpoint_path = Path(checkpoint)
         if not checkpoint_path.is_absolute():
             checkpoint_path = Path(__file__).resolve().parent / "checkpoints" / checkpoint_path
         checkpoint_state = torch.load(checkpoint_path, map_location=device)
-        noise_pred_net.load_state_dict(checkpoint_state["noise_pred_net_state_dict"])
+        state_dict = checkpoint_state.get("model_state_dict", checkpoint_state.get("noise_pred_net_state_dict"))
+        if state_dict is None:
+            raise KeyError("Checkpoint is missing model_state_dict/noise_pred_net_state_dict")
+        noise_pred_net.load_state_dict(state_dict)
         noise_pred_net = noise_pred_net.to(device).eval()
 
-        initial_model = DiffusionSampler(noise_pred_net, noise_scheduler, 'beliefmaze',
-                                                      policy=self.policy,
-                                                      pred_horizon=self.pred_horizon, action_dim=self.agent.action_length,
-                                                      prediction_type=self.prediction_type,
-                                                      obs_history=self.obs_history, action_history=self.action_history,
-                                                      num_diffusion_iters=self.diffusion_iters, position_conditioned=self.position_conditioned, goal_conditioned=self.goal_conditioned, 
-                                                      local_map_conditioned=self.local_map_conditioned, local_map_size=self.local_map_size).eval()
+        sampler_kwargs = {
+            "env_id": "beliefmaze",
+            "pred_horizon": self.pred_horizon,
+            "action_dim": self.agent.action_length,
+            "prediction_type": self.prediction_type,
+            "obs_history": self.obs_history,
+            "action_history": self.action_history,
+            "position_conditioned": self.position_conditioned,
+            "goal_conditioned": self.goal_conditioned,
+            "local_map_conditioned": self.local_map_conditioned,
+            "local_map_size": self.local_map_size,
+            "device": device,
+        }
+        if self.policy == "diffusion":
+            initial_model = Diffusion(
+                noise_pred_net,
+                num_diffusion_iters=self.diffusion_iters,
+                **sampler_kwargs,
+            ).eval()
+        elif self.policy == "flow_matching":
+            initial_model = FlowMatching(
+                noise_pred_net,
+                ode_steps=self.diffusion_iters,
+                **sampler_kwargs,
+            ).eval()
+        else:
+            raise ValueError(f"Unknown policy: {self.policy}")
 
         self.model = initial_model.to(device).eval()
 
+    def sample_random_point(self):
+        r = self.rng.random()
+        if r < self.goal_conditioning_bias:
+            random_point = self.goal
+        else:
+            # random_point = self.get_random_point(self.env, self.agent, self.rng)
+            random_point = self.get_random_point(self.env, self.env.static_circular_obstacles,
+                                                 self.env.static_rectangular_obstacles, self.rng)
+        if self.debug_flag:
+            print("Sampled random point: ", random_point)
+        return random_point
+    
     #overwrites RRT function with sampling actions from diffusion/flow-matching model
     def _select_best_extension_candidate(self, parent_node_id, parent_node, random_point):
         random_time = self.get_time()
@@ -160,20 +203,22 @@ class unique_inference(RRT):
         ids, states, controls, timesteps = self.get_path_to_node_id(parent_node_id)
         action_seq = None
 
-        raw_obs_seq = np.asarray([states])
+        raw_obs_seq = np.asarray(states, dtype=np.float32)
         if self.position_conditioned:
-            obs_seq = raw_obs_seq[-self.obs_history:,:]
+            obs_seq = raw_obs_seq[-self.obs_history:][None, :, :]
         else:
             obs_seq = np.zeros((1,self.obs_history,2))
 
         if len(controls)>0:
-            raw_action_seq = np.asarray([controls])
-            action_seq = raw_action_seq[-self.action_history:,:]
+            raw_action_seq = np.asarray(controls, dtype=np.float32)
+            action_seq = raw_action_seq[-self.action_history:][None, :, :]
 
         x,y = parent_node.state[:2]
         local_map = create_local_map(self.global_map,x,y,theta=0.0,map_size=self.local_map_size,scale=self.local_map_scale,s_global=1.0,map_center = self.map_center)
 
-        actions = self.model(obs_seq,action_seq,self.env.goal,local_map)
+        target = np.asarray([random_point], dtype=np.float32)
+    
+        actions = self.model(obs_seq,action_seq,target,local_map)
 
         mpc_actions = actions[0,:self.action_horizon,:]
 
@@ -203,7 +248,7 @@ class unique_inference(RRT):
         if not accept_new_node:
             return None
 
-        last_action = mpc_actions[-1,:] #temporary
+        last_action = mpc_actions[-1,:] #temporary ->Not logging all the actions but doesn't affect actual output
 
         best_candidate = (
             new_state,
@@ -213,7 +258,34 @@ class unique_inference(RRT):
         )
 
         return best_candidate
-    
+
+    def run_guidance(self, pos): #state is pos
+        state = torch.from_numpy(pos)
+        state.requires_grad_()
+
+        loss = self.inference_loss(state[:,:2])
+        gradient = torch.autograd.grad(loss, state)[0]
+        grad_norm = torch.linalg.vector_norm(gradient, dim = -1, keepdim = True) + 1e-8
+        learning_rate = 1e-3
+
+        state_new = state - learning_rate*(gradient/grad_norm)
+        return state_new.detach().numpy()
+        
+    def inference_loss(self,state):
+        x0,x1,y0,y1 = self.env.measurement_region
+        waypoint = torch.tensor([(x0+x1)/2, (y0+y1)/2])
+        waypoint = waypoint.repeat(len(state),1)
+        waypoint_dist = torch.linalg.vector_norm(waypoint-state, dim = 1)
+
+        #option 1
+        #loss = torch.min(waypoint_dist**2)
+
+        #option 2
+        tau = 2
+        loss = -tau * torch.log(torch.sum(torch.exp(-waypoint_dist/tau)))
+
+        return loss
+        
     #Run RRT+action model
     def run_action(self):
         self.plan_path()
@@ -241,7 +313,7 @@ class unique_inference(RRT):
         real_path = pos_start
 
         while num_iter <= max_iter:
-            obs = self.model(obs_cond,action_cond,self.env.goal, local_map)[0]
+            obs = self.model(obs_cond,action_cond,self.goal, local_map)[0]
             idx, res = self.env.path_safe(obs)
 
             if not res:
@@ -253,7 +325,7 @@ class unique_inference(RRT):
 
             #check if we hit the goal, either in the final state or anywhere in the path
             final_pos = mpc_obs[-1,:]
-            reached,dist = self.api.reached_goal_function(final_pos,self.env.goal,self.env.goal_radius,self.agent)
+            reached,dist = self.api.reached_goal_function(final_pos,self.goal,self.env.goal_radius,self.agent)
             
             if reached:
                 real_path = np.vstack((real_path,mpc_obs))        #add new rows to the overall path
@@ -261,7 +333,7 @@ class unique_inference(RRT):
             else:
                 if dist<threshold:
                     for i, pos in enumerate(mpc_obs,1):
-                        ans,distance = self.api.reached_goal_function(pos,self.env.goal,self.env.goal_radius,self.agent)
+                        ans,distance = self.api.reached_goal_function(pos,self.goal,self.env.goal_radius,self.agent)
                         if ans:
                             mpc_obs = mpc_obs[:i,:]
                             real_path = np.vstack((real_path,mpc_obs))
@@ -278,7 +350,7 @@ class unique_inference(RRT):
 
 
             
-def main():
+def run_inference():
     name = "beliefmaze"
     infra = unique_inference(name)
 
@@ -293,7 +365,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_inference()
 
 
 

@@ -8,17 +8,12 @@ torchaudio
 casadi
 diffusers
 einops
-gymnasium
-gymnasium-robotics
 matplotlib
-minari
-moviepy
 numpy
 omegaconf
 pillow
 pyyaml
 scipy
-spatialmath-python
 tensorboard
 termcolor
 tqdm

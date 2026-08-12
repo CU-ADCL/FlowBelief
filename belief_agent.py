@@ -62,9 +62,9 @@ class Belief_agent():
 
         for i in range(steps):
             if not flag:
-                state_next = self.step_state(state, actions[i,:])
+                state_next = self.step_state(state, actions[i,:]) #inference
             else: 
-                state_next = self.step_state(state, actions[0,:])
+                state_next = self.step_state(state, actions[0,:]) #training data
         
             path[i,:] = state_next
             state=state_next

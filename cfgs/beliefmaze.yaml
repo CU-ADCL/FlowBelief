@@ -12,14 +12,15 @@ local_map_embedding_dim: 400
 local_map_encoder: "resnet"
 denoiser: "unet"
 unet_size: "medium"
-num_epochs: 8
-checkpoint_every: 100
+unet_down_dims: [1, 2, 4]
+num_epochs: 15
+checkpoint_interval_epochs: 3
 resume_checkpoint: null
 augmentations: [ "mirror" ]
 policy: "flow_matching"
 num_diffusion_iters: 1
 pred_horizon: 4
 action_horizon: 2
-goal_conditioning_bias: 1
+goal_conditioning_bias: 0.65
 model_predictive_control: true
 checkpoint: "beliefmaze_17_06_08_07_epoch_8_step_15400.pt"

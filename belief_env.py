@@ -12,7 +12,7 @@ from Environments import RectangleObstacle2D
 class Belief_env():
 
 #set up environment parameters
-    def __init__(self):
+    def __init__(self, goal=None, rng=None):
         self.measurement_size = 2  #need to change across gym and agent files
 
         self.x_bounds = (0, 100)
@@ -20,7 +20,6 @@ class Belief_env():
 
         self.dt = 0.05
 
-        self.goal = np.array([90,90]);
         self.goal_radius = 10
         self.obstacle_region = [(0,43,50,80), (50,100,50,80)]
         self.measurement_region = (75,100,0,30)
@@ -45,6 +44,37 @@ class Belief_env():
             )
             for (x1, x2, y1, y2) in self.obstacle_region
         ]
+
+        self.goal = None
+        if goal is not None:
+            self.goal = np.asarray(goal, dtype=np.float64)
+        elif rng is not None:
+            self.generate_random_goal(rng)
+
+    def generate_random_goal(self, rng=None, min_distance_from_start=None, max_attempts=10000):
+        if rng is None:
+            rng = np.random.default_rng()
+
+        if min_distance_from_start is None:
+            min_distance_from_start = self.goal_radius
+
+        for _ in range(max_attempts):
+            goal = np.array(
+                [
+                    rng.uniform(self.x_bounds[0], self.x_bounds[1]),
+                    rng.uniform(self.y_bounds[0], self.y_bounds[1]),
+                ],
+                dtype=np.float64,
+            )
+
+            if self.check_collision(goal):
+                continue
+            if np.linalg.norm(goal - self.env_start) < min_distance_from_start:
+                continue
+            self.goal = goal
+            return self.goal
+
+        raise RuntimeError("Could not sample a valid goal inside the environment.")
 
     def build_belief_global_map(self, s_global=1.0):
         width = int((self.x_bounds[1] - self.x_bounds[0]) / s_global)
@@ -79,10 +109,17 @@ class Belief_env():
 
 
     #Following check_goal and check_collision is for regular state-space RRT 
-    def check_goal(self,pos):
-        dist = np.linalg.norm(self.goal-pos)  #return distance to goal
+    def check_goal(self, pos, goal=None, goal_radius=None):
+        if goal is None:
+            if self.goal is None:
+                raise ValueError("check_goal requires a goal when the environment has no current goal.")
+            goal = self.goal
+        if goal_radius is None:
+            goal_radius = self.goal_radius
 
-        return dist<=self.goal_radius
+        dist = np.linalg.norm(np.asarray(goal)[:2] - np.asarray(pos)[:2])  #return distance to goal
+
+        return dist<=goal_radius
 
     #also checks out of bounds even though state gets clipped in dynamics fcn
     def check_collision(self, pos):

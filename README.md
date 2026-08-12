@@ -1,106 +1,47 @@
-# DiTree
+# FlowBelief
 
-[project page](https://sites.google.com/view/ditree/home) , [paper](https://arxiv.org/abs/2508.21001)
+Belief-space motion planning experiments using diffusion or flow-matching policies for a custom 2D belief maze environment.
 
-Official implementation of the paper "Train Once Plan Anywhere Kinodynamic Motion Planning via Diffusion Trees" [CoRL 25]
+## Installation
 
-This repository contains the code and experiment setup for  **Train-Once Plan-Anywhere Kinodynamic Motion Planning via Diffusion Trees** . It includes training configuration, experiment execution scripts, and pretrained model checkpoints.
+Create a Python environment, then install the project dependencies:
 
-The associated car dataset and model weights are available for download [here](https://drive.google.com/drive/folders/1k8Btmcfqqa1YHKoZ8GNUEc8YKzK4SmWS?usp=drive_link).
-
----
-
-## 📦 Installation
-
-We recommend creating a Python virtual environment before installing dependencies.
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/Yanivhass/ditree.git
-cd ditree
-```
-
-2. **Create a virtual environment**
-
-```bash
-python3 -m venv venv
-source venv/bin/activate   # On Linux/Mac
-venv\Scripts\activate      # On Windows
-```
-
-3. **Install PyTorch**
-   Visit [PyTorch.org](https://pytorch.org/get-started/locally/) to find the correct installation command for your system (CPU or GPU).
-   Example (CUDA 11.8):
-
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-```
-
-4. **Install other dependencies**
-We provide here a minimal list of depencencies for running the car experiments. Other functionalities might require additional installation (e.g. Mujoco's Ant requiring Mujoco). 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+## Project Structure
 
-## 📂 Project Structure
-
-```
+```text
 .
-├── run_scenarios.py      # Runs the experiments
-├── train_manager.py      # Configures and launches training sessions
-├── checkpoints/          # Contains pretrained model weights
-├── data/                 # (optional) Local dataset storage
-└── requirements.txt      # Python dependencies
+├── belief_env.py          # Custom belief maze environment
+├── belief_agent.py        # Belief dynamics and covariance update model
+├── belief_API.py          # RRT wrapper and dataset collection entry point
+├── Inference.py           # RRT + learned action model inference
+├── train.py              # Belief policy training loop
+├── train_manager.py      # Configures and launches training
+├── cfgs/beliefmaze.yaml  # Training and inference config
+├── datasets/             # Belief trajectory dataset
+├── metadata/             # Dataset normalization statistics
+└── checkpoints/          # Model checkpoints
 ```
 
----
+## Usage
 
-## 🚀 Usage
-
-### Running Experiments
+Collect belief-space training paths:
 
 ```bash
-python run_scenarios.py
+python belief_API.py
 ```
 
-### Training
+Train the policy:
 
 ```bash
 python train_manager.py
 ```
 
----
+Run inference:
 
-## 📥 Pretrained Models & Dataset
-
-Pretrained model weights and the car dataset can be downloaded from:
-[Google Drive Link](https://drive.google.com/drive/folders/1WiBU2g1qQn_2j6v1ZTB1eU0dAyCGoX7F?usp=sharing)
-AntMaze dataset is available using Minari  [Minari]([https://pytorch.org/get-started/locally/](https://minari.farama.org/index.html))
-Place the downloaded files into:
-
+```bash
+python Inference.py
 ```
-checkpoints/
-data/
-```
-
-## Citation
-
-If you use this work, please cite:
-
-```bibtex
-@inproceedings{
-hassidof2025trainonce,
-title={Train-Once Plan-Anywhere Kinodynamic Motion Planning via Diffusion Trees},
-author={Yaniv Hassidof and Tom Jurgenson and Kiril Solovey},
-booktitle={9th Annual Conference on Robot Learning},
-year={2025},
-url={https://openreview.net/forum?id=lJWUourMTT}
-}
-
-
-
-
-

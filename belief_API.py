@@ -37,23 +37,18 @@ class Belief_wrapper():
         
     #cost is just distance for now
     def cost_function(self,env,agent,parent_state,action,duration, path):
-        states = len(path)-1
-        tot_dist = 0
-
-        for i in range(states):
-            s1 = path[i,:2]
-            s2 = path[i+1,:2]
-            tot_dist += np.linalg.norm(s2-s1)
-
-        return float(tot_dist)
+        return np.linalg.norm(path[-1,:2] - parent_state[:2])
 
     def reached_goal_function(self,state, goal, goal_radius, agent):
         dist_to_goal = np.linalg.norm(goal[:2] - state[:2])
 
         return dist_to_goal<=goal_radius, dist_to_goal
 
-
-if __name__ == "__main__":
+""" 
+TODO->
+Add eval code
+ """
+def collect_training_paths():
     #Run RRT
     env = Belief_env()
     agent = Belief_agent(env)
@@ -72,10 +67,12 @@ if __name__ == "__main__":
 
     for i in range(numpath):
         seed = seed_start + i
+        rng = np.random.default_rng(seed)
+        goal = env.generate_random_goal(rng)
 
         rrt = RRT(
             start=env.env_start,
-            goal=env.goal,
+            goal=goal,
             goal_radius=env.goal_radius,
             env=env,
             agent=agent,
@@ -106,7 +103,7 @@ if __name__ == "__main__":
                 episode = {
                     "observations": observations,
                     "actions": actions,
-                    "goal": np.asarray(env.goal, dtype=np.float32),
+                    "goal": np.asarray(goal, dtype=np.float32),
                     "goal_radius": float(env.goal_radius),
                     "seed": seed,
                     "path_cost": rrt.path_cost,
@@ -129,3 +126,6 @@ if __name__ == "__main__":
     with open(dataset_path, "wb") as f:
         pickle.dump(dataset, f)
     print("Dataset path:", dataset_path)
+
+if __name__ == "__main__":
+    collect_training_paths()
