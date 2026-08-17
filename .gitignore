@@ -9,7 +9,6 @@ policies/
 venv/
 __pycache__/
 benchmark_results/
-checkpoints/
 common/__pycache__/
 data/
 path_outputs/

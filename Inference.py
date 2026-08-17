@@ -62,7 +62,7 @@ class unique_inference(RRT):
         self.env = Belief_env()
         self.agent = Belief_agent(self.env)
         self.api = Belief_wrapper(self.env, self.agent)
-        self.seed = loaded_config.get("seed", 5)
+        self.seed = loaded_config.get("seed", 30)
         goal = loaded_config.get("goal")
         if goal is None:
             goal = self.env.generate_random_goal(np.random.default_rng(self.seed))
