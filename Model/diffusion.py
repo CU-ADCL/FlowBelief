@@ -16,7 +16,7 @@ class Diffusion(PolicySamplerBase):
             )
         
     def forward(self, obs_seq, action_seq, goal=None, local_map=None):
-        cond_vec, local_map, position = self._build_conditions(
+        cond_vec, local_map = self._build_conditions(
             obs_seq,
             action_seq,
             goal,
@@ -47,9 +47,9 @@ class Diffusion(PolicySamplerBase):
         obs_seq_np = self._to_numpy(obs_seq)
         action_seq_np = self._to_numpy(action_seq)
 
-        cond_vec, local_map, position = self._build_conditions(
-            obs_seq_np,
-            action_seq_np,
+        cond_vec, local_map = self._build_conditions(
+            obs_seq_np[:, :self.obs_history, :],
+            action_seq_np[:, :self.action_history, :],
             goal,
             local_map,
             goal_is_preprocessed=True,
