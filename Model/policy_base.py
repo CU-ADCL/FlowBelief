@@ -107,12 +107,41 @@ class PolicySamplerBase(nn.Module):
         current_position = obs_hist[:, -1, :2]
 
         #Condition observations
+        if obs_hist.shape[1] < self.obs_history:
+            obs_padding = np.zeros(
+                (
+                    obs_hist.shape[0],
+                    self.obs_history - obs_hist.shape[1],
+                    obs_hist.shape[2],
+                ),
+                dtype=obs_hist.dtype,
+            )
+            obs_hist = np.concatenate([obs_padding, obs_hist], axis=1)
+        else:
+            obs_hist = obs_hist[:, -self.obs_history:, :]
         obs_hist = self._normalize_observations(obs_hist)
         cond_vec = torch.from_numpy(obs_hist)
         cond_vec = cond_vec.flatten(start_dim=1).to(self.device, dtype=torch.float32)
 
         #Condition actions
         if self.action_history > 0:
+            if action_hist is None:
+                action_hist = np.zeros(
+                    (obs_hist.shape[0], self.action_history, self.action_dim),
+                    dtype=np.float32,
+                )
+            elif action_hist.shape[1] < self.action_history:
+                action_padding = np.zeros(
+                    (
+                        action_hist.shape[0],
+                        self.action_history - action_hist.shape[1],
+                        action_hist.shape[2],
+                    ),
+                    dtype=action_hist.dtype,
+                )
+                action_hist = np.concatenate([action_padding, action_hist], axis=1)
+            else:
+                action_hist = action_hist[:, -self.action_history:, :]
             action_hist = self._normalize_actions(action_hist)
             action_cond = torch.from_numpy(action_hist)
             action_cond = action_cond.flatten(start_dim=1).to(self.device, dtype=torch.float32)
